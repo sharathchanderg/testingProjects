@@ -21,7 +21,7 @@ const sentEmailToReset = async (name, email, token) => {
       requireTLS: true,
       //service:'gmail',
       auth: {
-        user: "sharathchanderg3@gmail.com",
+        user: "process.env.SAN_EMAIL",
         pass: "drodhxsooferaydf",
       },
     });

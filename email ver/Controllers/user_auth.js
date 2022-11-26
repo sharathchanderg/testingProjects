@@ -2,65 +2,18 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 require("dotenv").config();
+const nodemailer = require("nodemailer");
+const randomstring = require("randomstring");
 const User = require("../Models/user_auth");
 
-const sentEmailToReset = async (name, email, token) => {
+const securePassword = async (password) => {
   try {
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      requireTLS: true,
-      //service:'gmail',
-      auth: {
-        user: "sharathchanderg3@gmail.com",
-        pass: "drodhxsooferaydf",
-      },
-    });
-    
-  } catch (err) {
-    res.status(400).send({ success: false, message: err.message });
+    const hashPassword = await bcrypt.hashSync(password, 10);
+    return hashPassword;
+  } catch (error) {
+    res.status(400).send(error.message);
   }
 };
-exports.userSignUp = async(req,res)=>{
-  try{ 
-    const newuser = new User({
-      name:req.body.name,
-      mobile:req.body.mobile,
-      email:req.body.email,
-      password:req.body.password,
-      emailToken:crypto.randomBytes(64).toString("hex"),
-      isVerfied:false,
-      status:1,
-      profile_image:req.body.profile_image
-    });
-    const hashpasword = await bcrypt.hash(newuser.password,salt);
-    newuser.password = hashpasword
-    const newUser = await newuser.save();
-    const mailOption = {
-      from: process.env.SAN_EMAIL,
-      to: email,
-      subject: "Reset Password",
-      html: `<h1>Hello ${name}!!</h1>
-            <p>Please copy the <a href="http://${req.headers.host}/api/verify-mail?token=${user.emailToken}">link</a> to verify your email</p>`,
-    };
-    transporter.sendMail(mailOption, function (err, info) {
-      if (err) {
-        console.log(err);
-      } else {
-        console.log("mail has sent to your registered email ", info.response);
-      }
-    });
-  }
-  catch{
-    return res.status(400).json({ meassage: "something went wrong", error: err });
-  }
-}
-
-const createToken = (id)=>{
-    return jwt.sign({id},"process.env.SAN_SECRET")
-}
-
 
 //for profile photo location
 const Storage = multer.diskStorage({
@@ -73,6 +26,37 @@ exports.upload_userimage = multer({
   storage: Storage,
 });
 
+const sentEmailToReset = async (name, email, token) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      requireTLS: true,
+      //service:'gmail',
+      auth: {
+        user: "process.env.SAN_EMAIL",
+        pass: "process.env.SAN_EMAIL_PASSWORD",
+      },
+    });
+    const mailOption = {
+      from: process.env.SAN_EMAIL,
+      to: email,
+      subject: "Email Verification",
+      html: `<h1>Hello ${name}!!</h1>
+            <p>Please copy the <a href="http://localhost:4000/api/verify_email?token=${token}">link</a> to reset your password</p>`,
+    };
+    transporter.sendMail(mailOption, function (err, info) {
+      if (err) {
+        console.log(err);
+      } else {
+        console.log("mail has sent to your registered email ", info.response);
+      }
+    });
+  } catch (err) {
+    res.status(400).send({ success: false, message: err.message });
+  }
+};
 
 
 //user registration
@@ -114,6 +98,59 @@ exports.userRegistration = (req, res) => {
     });
   });
 };
+
+
+
+exports.forgotpasword = async (req, res) => {
+  try {
+    const email = req.body.email;
+    const userData = await User.findOne({ email: email });
+    if (userData) {
+      const randomString = randomstring.generate();
+      const data = await User.updateOne(
+        { email: email },
+        { $set: { token: randomString } }
+      );
+      //console.log(data)
+      sentEmailToReset(data.name, userData.email, randomString);
+      res.status(200).send({
+        success: true,
+        meassage: "please check your email to reset your password",
+      });
+    }
+  } catch (err) {
+    res.status(400).send({ success: false, message: err.message });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const token = req.query.token;
+    console.log(token);
+    const tokenData = await User.findOne({ token: token });
+    //console.log(tokenData)
+    if (tokenData) {
+      const password = req.body.password;
+      const hashingPassword = await securePassword(password);
+      const userData = await User.findByIdAndUpdate(
+        { _id: tokenData._id },
+        { $set: { password: hashingPassword }, token: " " },
+        { new: true }
+      );
+      console.log(userData);
+      res
+        .status(200)
+        .send({
+          success: true,
+          message: "your password is rested successfully",
+          data: userData,
+        });
+    }
+  } catch (err) {
+    res.status(400).send({ success: false, message: err.message });
+  }
+};
+
 const token_generate = async (id) => {
   try {
     const token = await jwt.sign({ _id: id }, "process.env.SAN_SECRET");
@@ -122,8 +159,6 @@ const token_generate = async (id) => {
     res.status(400).send("error: somethingt went wrong");
   }
 };
-
-
 //user login
 exports.userlogin = async (req, res) => {
   try {
@@ -159,6 +194,42 @@ exports.userlogin = async (req, res) => {
   }
 };
 
+
+
+// exports.userSignUp = async(req,res)=>{
+//   try{ 
+//     const newuser = new User({
+//       name:req.body.name,
+//       mobile:req.body.mobile,
+//       email:req.body.email,
+//       password:req.body.password,
+//       emailToken:crypto.randomBytes(64).toString("hex"),
+//       isVerfied:false,
+//       status:1,
+//       profile_image:req.body.profile_image
+//     });
+//     const hashpasword = await bcrypt.hash(newuser.password,salt);
+//     newuser.password = hashpasword
+//     const newUser = await newuser.save();
+//     const mailOption = {
+//       from: process.env.SAN_EMAIL,
+//       to: email,
+//       subject: "Reset Password",
+//       html: `<h1>Hello ${name}!!</h1>
+//             <p>Please copy the <a href="http://${req.headers.host}/api/verify-mail?token=${user.emailToken}">link</a> to verify your email</p>`,
+//     };
+//     transporter.sendMail(mailOption, function (err, info) {
+//       if (err) {
+//         console.log(err);
+//       } else {
+//         console.log("mail has sent to your registered email ", info.response);
+//       }
+//     });
+//   }
+//   catch{
+//     return res.status(400).json({ meassage: "something went wrong", error: err });
+//   }
+// }
 
 // exports.signUp = async(req,res)=>{
 //   const user = await User.findOne({
